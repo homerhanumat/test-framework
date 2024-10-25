@@ -1,36 +1,45 @@
-name: Deploy
-
+name: Publish
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   push:
-    branches: [main]
-  schedule:
-    - cron: "15 10 * * *"
-
+    branches: ["main"]
+permissions:
+  contents: write
 jobs:
-  deploy:
+  build:
+    concurrency: ci-${{ github.ref }} # Recommended if you intend to make multiple deployments in quick succession.
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
-      id-token: write
-      packages: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
-      - run: yarn --frozen-lockfile
-      - id: date
-        run: echo "date=$(TZ=America/Los_Angeles date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-      - id: cache-data
-        uses: actions/cache@v4
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.observablehq/cache
-          key: data-${{ hashFiles('docs/data/*') }}-${{ steps.date.outputs.date }}
-      - run: yarn build
-      - run: yarn docs:build
-      - run: yarn docs:deploy
-        env:
-          OBSERVABLE_TOKEN: ${{ secrets.OBSERVABLE_API_TOKEN }}
+          path: ./dist
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
